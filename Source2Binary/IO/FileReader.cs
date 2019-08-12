@@ -33,6 +33,10 @@ namespace Source2Binary.IO
         public T ReadStruct<T>() => ReadBytes(Marshal.SizeOf<T>()).BytesToStruct<T>(ByteOrder == ByteOrder.BigEndian);
         public List<T> ReadMultipleStructs<T>(int count) => Enumerable.Range(0, count).Select(_ => ReadStruct<T>()).ToList();
 
+        public void SeekBegin(uint Offset) { Seek(Offset, SeekOrigin.Begin); }
+        public void SeekBegin(int Offset) { Seek(Offset, SeekOrigin.Begin); }
+        public void SeekBegin(long Offset) { Seek(Offset, SeekOrigin.Begin); }
+
         public bool CheckSignature(uint Identifier, long position = 0)
         {
             if (Position + 4 >= BaseStream.Length || position < 0 || position + 4 >= BaseStream.Length)

@@ -1,5 +1,8 @@
 ﻿using System;
 using System.IO;
+using System.Collections.Generic;
+using Source2Binary.Dds;
+using System.Linq;
 
 namespace Source2Binary
 {
@@ -7,13 +10,15 @@ namespace Source2Binary
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            args = new string[1] { "test.dds" };
 
+            if (args.Length == 0)
+                Console.WriteLine("Drag some DDS files to test this out! Note this will be able to convert many formats, current bntx is only supported at this time!");
+
+            BNTX bntx = new BNTX();
             using (var fileStream = new FileStream("test.bntx", FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
             {
-                BNTX bntx = new BNTX();
-                bntx.GenerateBinary(fileStream);
-                Console.WriteLine("Generated BNTX successfully!");
+                bntx.GenerateBinary(fileStream, args.ToList());
             }
 
             Console.Read();

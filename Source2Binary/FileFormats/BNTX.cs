@@ -4,13 +4,18 @@ using System.Text;
 using Syroot.NintenTools.NSW.Bntx;
 using Syroot.NintenTools.NSW.Bntx.GFX;
 using System.Linq;
+using Source2Binary.Dds;
 
 namespace Source2Binary
 {
     public class BNTX : IConvertableBinary
     {
-        public void GenerateBinary(System.IO.Stream stream)
+        public void GenerateBinary(System.IO.Stream stream, List<string> sourceFiles)
         {
+            List<DDS> Textures = new List<DDS>();
+            for (int i = 0; i < sourceFiles.Count; i++)
+                Textures.Add(new Dds.DDS(sourceFiles[0]));
+
             BntxFile bntx = new BntxFile();
             bntx.Target = new char[] { 'N', 'X', ' ', ' ' };
             bntx.Name = "textures.bntx";
@@ -25,10 +30,41 @@ namespace Source2Binary
             bntx.RelocationTable = new RelocationTable();
             bntx.Flag = 0;
 
-            bntx.Textures.Add(new Texture() { Name = "dirt", });
+            foreach (var file in Textures)
+                bntx.Textures.Add(FromDDS(file));
 
             bntx.Save(stream);
         }
+
+        private Texture FromDDS(DDS dds)
+        {
+            TextureConfig config = new TextureConfig();
+            config.Width = dds.MainHeader.Width;
+            config.Height = dds.MainHeader.Height;
+            config.Format = FormatConverter[dds.ToGenericFormat()];
+            config.MipCount = dds.MainHeader.MipCount;
+            config.Name = dds.FileName;
+
+            Console.WriteLine("SurfaceFormat " + config.Format);
+
+            return FromBitMap(dds.GetImageData(), config);
+        }
+
+        public Dictionary<SBTexFormat, SurfaceFormat> FormatConverter = new Dictionary<SBTexFormat, SurfaceFormat>()
+        {
+            { SBTexFormat.BC1_Unorm, SurfaceFormat.BC1_UNORM },
+            { SBTexFormat.BC1_Srgb, SurfaceFormat.BC1_SRGB },
+            { SBTexFormat.BC2_Unorm, SurfaceFormat.BC2_UNORM },
+            { SBTexFormat.BC2_Srgb, SurfaceFormat.BC2_SRGB },
+            { SBTexFormat.BC3_Unorm, SurfaceFormat.BC3_UNORM },
+            { SBTexFormat.BC3_Srgb, SurfaceFormat.BC3_SRGB },
+            { SBTexFormat.BC4_Unorm, SurfaceFormat.BC4_UNORM },
+            { SBTexFormat.BC4_Snorm, SurfaceFormat.BC4_SNORM },
+            { SBTexFormat.BC5_Unorm, SurfaceFormat.BC5_UNORM },
+            { SBTexFormat.BC5_Snorm, SurfaceFormat.BC5_SNORM },
+            { SBTexFormat.RGBA8_Srgb, SurfaceFormat.R8_G8_B8_A8_SRGB },
+            { SBTexFormat.RGBA8_Unorm, SurfaceFormat.R8_G8_B8_A8_UNORM },
+        };
 
         public class TextureConfig
         {
@@ -36,8 +72,8 @@ namespace Source2Binary
             public uint AccessFlags = 0x20;
             public uint MipCount;
             public uint Depth = 1;
-            public uint TexWidth;
-            public uint TexHeight;
+            public uint Width;
+            public uint Height;
             public uint Flags;
             public uint Swizzle;
             public uint SampleCount = 1;
@@ -66,6 +102,10 @@ namespace Source2Binary
         public Texture FromBitMap(List<byte[]> arrayFaces, TextureConfig config)
         {
             Texture tex = new Texture();
+            tex.Name = config.Name;
+            tex.Format = config.Format;
+            tex.Width = config.Width;
+            tex.Height = config.Height;
             tex.ChannelRed = config.RedComp;
             tex.ChannelGreen = config.GreenComp;
             tex.ChannelBlue = config.BlueComp;
@@ -86,6 +126,7 @@ namespace Source2Binary
             tex.Regs = config.Regs;
             tex.Pitch = config.Pitch;
             tex.MipOffsets = new long[tex.MipCount];
+            tex.TextureData = new List<List<byte[]>>();
 
             for (int i = 0; i < arrayFaces.Count; i++)
             {

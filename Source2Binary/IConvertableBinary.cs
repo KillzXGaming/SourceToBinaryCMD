@@ -6,6 +6,6 @@ namespace Source2Binary
 {
     public interface IConvertableBinary
     {
-        void GenerateBinary(System.IO.Stream stream);
+        void GenerateBinary(System.IO.Stream stream, List<string> sourceFies);
     }
 }
