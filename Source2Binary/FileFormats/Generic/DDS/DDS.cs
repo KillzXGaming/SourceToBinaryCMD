@@ -153,6 +153,19 @@ namespace Source2Binary.Dds
 
         public byte[] ImageData;
 
+        public bool IsDX10 => PfHeader.FourCC == FOURCC_DX10;
+
+        public bool IsCubeMap
+        {
+            get { return PfHeader.Caps2 == (uint)DDSCAPS2.CUBEMAP_ALLFACES; }
+            set {
+                if (value)
+                    PfHeader.Caps2 = (uint)DDSCAPS2.CUBEMAP_ALLFACES;
+                else
+                    PfHeader.Caps2 = 0;
+            }
+        }
+
         public DDS(string fileName) { Load(fileName); }
 
         public SBTexFormat ToGenericFormat()
@@ -211,13 +224,18 @@ namespace Source2Binary.Dds
             Load(new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read));
         }
 
-        public void Load(System.IO.Stream stream)
+        public void Save(string fileName)
+        {
+            Save(new FileStream(fileName, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite));
+        }
+
+        public void Load(Stream stream)
         {
             using (var reader = new FileReader(stream))
             {
                 MainHeader = reader.ReadStruct<Header>();
                 PfHeader = reader.ReadStruct<DDSPFHeader>();
-                if (PfHeader.FourCC == FOURCC_DX10)
+                if (IsDX10)
                     Dx10Header = reader.ReadStruct<DX10Header>();
 
                 int Dx10Size = Dx10Header != null ? 20 : 0;
@@ -227,14 +245,15 @@ namespace Source2Binary.Dds
             }
         }
 
-        public void Save(System.IO.Stream stream)
+        public void Save(Stream stream)
         {
             using (var writer = new FileWriter(stream))
             {
                 writer.WriteStruct(MainHeader);
                 writer.WriteStruct(PfHeader);
-                if (Dx10Header != null)
+                if (IsDX10)
                     writer.WriteStruct(Dx10Header);
+
                 writer.Write(ImageData);
             }
         }

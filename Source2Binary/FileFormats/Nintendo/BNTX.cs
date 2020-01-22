@@ -10,15 +10,15 @@ namespace Source2Binary
 {
     public class BNTX : IConvertableBinary
     {
-        public void GenerateBinary(System.IO.Stream stream, List<string> sourceFiles)
+        public void GenerateBinary(System.IO.Stream stream, string[] args)
         {
             List<DDS> Textures = new List<DDS>();
-            for (int i = 0; i < sourceFiles.Count; i++)
-                Textures.Add(new Dds.DDS(sourceFiles[0]));
+            for (int i = 0; i < args.Length; i++)
+                Textures.Add(new DDS(args[i]));
 
             BntxFile bntx = new BntxFile();
             bntx.Target = new char[] { 'N', 'X', ' ', ' ' };
-            bntx.Name = "textures.bntx";
+            bntx.Name = "textures";
             bntx.Alignment = 0xC;
             bntx.TargetAddressSize = 0x40;
             bntx.VersionMajor = 0;
@@ -43,7 +43,7 @@ namespace Source2Binary
             config.Height = dds.MainHeader.Height;
             config.Format = FormatConverter[dds.ToGenericFormat()];
             config.MipCount = dds.MainHeader.MipCount;
-            config.Name = dds.FileName;
+            config.Name = System.IO.Path.GetFileNameWithoutExtension(dds.FileName);
 
             Console.WriteLine("SurfaceFormat " + config.Format);
 

@@ -4,8 +4,8 @@ using System.Text;
 
 namespace Source2Binary
 {
-    public interface IConvertableBinary
+    public class STGenericTextureMap
     {
-        void GenerateBinary(System.IO.Stream stream, string[] args);
+        public string Name { get; set; }
     }
 }
