@@ -72,7 +72,7 @@ namespace Source2Binary.Collada
             public library_controllers controllers;
             public library_materials materials;
 
-            public UpAxisType UpAxisType;
+            public UpAxisType UpAxisType = UpAxisType.Z_UP;
             public assetUnit UintSize;
 
             public ColladaScene(COLLADA collada, DAE.ImportSettings settings)
@@ -144,7 +144,18 @@ namespace Source2Binary.Collada
 
             //Find the root bone
             if (node.Type == NodeType.JOINT) {
-                LoadBoneHiearchy(daeNode, model, null, parent);
+                //Apply axis rotation
+                Matrix4 boneTransform = Matrix4.Identity;
+                if (colladaScene.UpAxisType == UpAxisType.Y_UP) {
+                  //  boneTransform = Matrix4.CreateRotationX(MathHelper.DegreesToRadians(90));
+                }
+                if (colladaScene.UintSize != null && colladaScene.UintSize.meter != 1)
+                {
+                    var scale = ApplyUintScaling(colladaScene, new Vector3(1));
+                    boneTransform *= Matrix4.CreateScale(scale);
+                }
+
+                LoadBoneHiearchy(daeNode, model, null, ref boneTransform);
             }
             else if (daeNode.node1 != null) {
                 foreach (node child in daeNode.node1)
@@ -155,22 +166,24 @@ namespace Source2Binary.Collada
         }
 
         private static STBone LoadBoneHiearchy(node daeNode, STGenericModel model,
-            STBone boneParent, Node parent)
+            STBone boneParent, ref Matrix4 parentTransform)
         {
             STBone bone = new STBone(model.Skeleton, daeNode.name);
             model.Skeleton.Bones.Add(bone);
 
-            var transform = DaeUtility.GetMatrix(daeNode.Items) * parent.Transform;
+            var transform = DaeUtility.GetMatrix(daeNode.Items) * parentTransform;
 
             bone.Scale = transform.ExtractScale();
             bone.Rotation = transform.ExtractRotation();
             bone.Position = transform.ExtractTranslation();
             bone.Parent = boneParent;
 
+            parentTransform = Matrix4.Identity;
+
             if (daeNode.node1 != null)
             {
                 foreach (node child in daeNode.node1)
-                    bone.Children.Add(LoadBoneHiearchy(child, model, bone, parent));
+                    bone.Children.Add(LoadBoneHiearchy(child, model, bone,ref parentTransform));
             }
             return bone;
         }
@@ -184,13 +197,8 @@ namespace Source2Binary.Collada
             mesh.Vertices = new List<STVertex>();
             mesh.Name = geom.name;
 
-            var boneWeights = ParseWeightController(controller);
+            var boneWeights = ParseWeightController(controller, scene);
             int numVertex = GetTotalVertexCount(daeMesh.Items);
-
-            //Create a current list of all the vertices
-            //Use a list to expand duplicate indices
-           // for (int i = 0; i < numVertex; i++)
-            //    vertices.Add(new Vertex(vertices.Count, new List<int>()));
 
             foreach (var item in daeMesh.Items) {
                 if (item is polylist)
@@ -241,8 +249,12 @@ namespace Source2Binary.Collada
             group.MaterialIndex = DaeUtility.FindMaterialIndex(materials, material);
 
             string[] indices = polys.Trim(' ').Split(' ');
-            int stride = inputs.Length;
+            int stride = 0;
+            for (int i = 0; i < inputs.Length; i++)
+                stride = Math.Max(0, (int)inputs[i].offset + 1);
 
+            //Create a current list of all the vertices
+            //Use a list to expand duplicate indices
             List<Vertex> vertices = new List<Vertex>();
             var vertexSource = DaeUtility.FindSourceFromInput(daeMesh.vertices.input[0], daeMesh.source);
             var floatArr = vertexSource.Item as float_array;
@@ -253,10 +265,8 @@ namespace Source2Binary.Collada
             for (int i = 0; i < indices.Length ; i += stride)
             {
                 List<int> semanticIndices = new List<int>();
-                for (int j = 0; j < stride; j++)
-                {
-                    var input = inputs[j];
-                    int index = Convert.ToInt32(indices[i  + (int)input.offset]);
+                for (int j = 0; j < inputs.Length; j++) {
+                    int index = Convert.ToInt32(indices[i  + (int)inputs[j].offset]);
                     semanticIndices.Add(index);
                 }
 
@@ -264,7 +274,7 @@ namespace Source2Binary.Collada
                 if (boneWeights?.Count > semanticIndices[0])
                     boneWeightData = boneWeights[semanticIndices[0]];
 
-                 VertexLoader.LoadVertex(ref faces, ref vertices, semanticIndices, boneWeightData);
+                VertexLoader.LoadVertex(ref faces, ref vertices, semanticIndices, boneWeightData);
             }
 
             group.Faces = faces;
@@ -272,14 +282,23 @@ namespace Source2Binary.Collada
             int numTexCoordChannels = 0;
             int numColorChannels = 0;
 
-            for (int i = 0; i < inputs.Length; i++)
-            {
-                if (inputs[i].semantic == "TEXCOORD")
-                    numTexCoordChannels++;
-                if (inputs[i].semantic == "COLOR")
-                    numColorChannels++;
+            //Find them in both types of inputs
+            for (int i = 0; i < inputs.Length; i++) {
+                if (inputs[i].semantic == "TEXCOORD") numTexCoordChannels++;
+                if (inputs[i].semantic == "COLOR") numColorChannels++;
             }
 
+            for (int i = 0; i < daeMesh.vertices.input.Length; i++) {
+                if (daeMesh.vertices.input[i].semantic == "TEXCOORD") numTexCoordChannels++;
+                if (daeMesh.vertices.input[i].semantic == "COLOR") numColorChannels++;
+            }
+
+
+            for (int i = 0; i < vertices.Count; i++)
+                if (!vertices[i].IsSet)
+                    vertices.Remove(vertices[i]);
+
+            bool hasNormals = false;
             foreach (var daeVertex in vertices)
             {
                 if (daeVertex.semanticIndices.Count == 0)
@@ -291,70 +310,150 @@ namespace Source2Binary.Collada
                 vertex.BoneWeights = daeVertex.BoneWeights.ToList();
                 mesh.Vertices.Add(vertex);
 
+                //DAE has 2 inputs. Vertex and triangle inputs
+                //Triangle inputs use indices over vertex inputs which only use one
+                //Triangle inputs allow multiple color/uv sets unlike vertex inputs
+                //Certain programs ie Noesis DAEs use vertex inputs. Most programs use triangle inputs
+                for (int j = 0; j < daeMesh.vertices.input.Length; j++)
+                {
+                    //Vertex inputs only use the first index
+                    var vertexInput = daeMesh.vertices.input[j];
+                    source source = DaeUtility.FindSourceFromInput(vertexInput, daeMesh.source);
+                    if (source == null) continue;
+                    if (vertexInput.semantic == "NORMAL") 
+                        hasNormals = true;
+
+                    int dataStride = (int)source.technique_common.accessor.stride;
+                    int index = daeVertex.semanticIndices[0] * dataStride;
+
+                    ParseVertexSource(ref vertex, scene, source, numTexCoordChannels, numColorChannels,
+                        dataStride, index, 0, vertexInput.semantic);
+                }
+
                 for (int i = 0; i < inputs.Length; i++)
                 {
                     var input = inputs[i];
-                    source source = null;
-                    if (input.semantic == "VERTEX")
-                    {
-                        for (int j = 0; j < daeMesh.vertices.input.Length; j++)
-                        {
-                            var vertexInput = daeMesh.vertices.input[j];
-                            if (vertexInput.semantic == "POSITION")
-                                source = DaeUtility.FindSourceFromInput(vertexInput, daeMesh.source);
-                        }
-                    }
-                    else
-                        source = DaeUtility.FindSourceFromInput(input, daeMesh.source);
+                    source source = DaeUtility.FindSourceFromInput(input, daeMesh.source);
+                    if (source == null) continue;
+                    if (input.semantic == "NORMAL")
+                        hasNormals = true;
 
                     int dataStride = (int)source.technique_common.accessor.stride;
                     int index = daeVertex.semanticIndices[i] * dataStride;
-                    int set = (int)input.set;
 
-                    float_array array = source.Item as float_array;
-                    switch (inputs[i].semantic)
-                    {
-                        case "VERTEX":
-                            vertex.Position = new Vector3(
-                                (float)array.Values[index + 0],
-                                (float)array.Values[index + 1],
-                                (float)array.Values[index + 2]);
-                            break;
-                        case "NORMAL":
-                            vertex.Normal = new Vector3(
-                                (float)array.Values[index + 0],
-                                (float)array.Values[index + 1],
-                                (float)array.Values[index + 2]);
-                            break;
-                        case "TEXCOORD":
-                            vertex.TexCoords[set] = new Vector2(
-                                (float)array.Values[index + 0],
-                                (float)array.Values[index + 1]);
-                            break;
-                        case "COLOR":
-                            float R = 1, G = 1, B = 1, A = 1;
-                            if (stride >= 1) R = (float)array.Values[index + 0];
-                            if (stride >= 2) G = (float)array.Values[index + 1];
-                            if (stride >= 3) B = (float)array.Values[index + 2];
-                            if (stride >= 4) A = (float)array.Values[index + 3];
-                            vertex.Colors[set] = new Vector4(R,G,B,A);
-                            break;
-                    }
-
-                    switch (scene.UpAxisType)
-                    {
-                        case UpAxisType.X_UP:
-                            break;
-                        case UpAxisType.Y_UP:
-                            break;
-                        case UpAxisType.Z_UP:
-                            break;
-                    }
+                    ParseVertexSource(ref vertex, scene, source, numTexCoordChannels, numColorChannels,
+                        dataStride, index, (int)input.set, input.semantic);
                 }
             }
+
+            if (!hasNormals)
+                CalculateNormals(mesh.Vertices, faces);
         }
 
-        private static List<BoneWeight[]> ParseWeightController(controller controller)
+        private static void ParseVertexSource(ref STVertex vertex, ColladaScene scene, source source, 
+            int numTexCoordChannels, int numColorChannels, int stride, int index, int set, string semantic)
+        {
+            float_array array = source.Item as float_array;
+            switch (semantic)
+            {
+                case "VERTEX":
+                case "POSITION":
+                    vertex.Position = new Vector3(
+                        (float)array.Values[index + 0],
+                        (float)array.Values[index + 1],
+                        (float)array.Values[index + 2]);
+                    vertex.Position = ApplyUintScaling(scene, vertex.Position);
+                    break;
+                case "NORMAL":
+                    vertex.Normal = new Vector3(
+                        (float)array.Values[index + 0],
+                        (float)array.Values[index + 1],
+                        (float)array.Values[index + 2]);
+                    break;
+                case "TEXCOORD":
+                    vertex.TexCoords[set] = new Vector2(
+                        (float)array.Values[index + 0],
+                        (float)array.Values[index + 1]);
+                    break;
+                case "COLOR":
+                    float R = 1, G = 1, B = 1, A = 1;
+                    if (stride >= 1) R = (float)array.Values[index + 0];
+                    if (stride >= 2) G = (float)array.Values[index + 1];
+                    if (stride >= 3) B = (float)array.Values[index + 2];
+                    if (stride >= 4) A = (float)array.Values[index + 3];
+                    vertex.Colors[set] = new Vector4(R, G, B, A);
+                    break;
+            }
+
+            //We need to make sure the axis is converted to Z up
+            /*  switch (scene.UpAxisType)
+              {
+                  case UpAxisType.X_UP:
+                      break;
+                  case UpAxisType.Y_UP:
+                      Vector3 pos = vertex.Position;
+                      Vector3 nrm = vertex.Normal;
+                      //   vertex.Position = new Vector3(pos.X, pos.Z, pos.Y);
+                      //    vertex.Normal = new Vector3(nrm.X, nrm.Z, nrm.Y);
+                      break;
+              }*/
+        }
+
+        private static Vector3 ApplyUintScaling(ColladaScene scene, Vector3 value)
+        {
+            if (scene.UintSize == null) return value;
+
+            Vector3 val = value;
+            float scale = (float)scene.UintSize.meter;
+
+            //Convert scale to centimeters then multiple the vertex
+            switch (scene.UintSize.name)
+            {
+                case "meter":
+                    scale *= 100;
+                    break;
+            }
+
+            val *= scale;
+            return val;
+        }
+
+        private static void CalculateNormals(List<STVertex> vertices, List<uint> f)
+        {
+            if (vertices.Count < 3)
+                return;
+
+            Vector3[] normals = new Vector3[vertices.Count];
+
+            for (int i = 0; i < normals.Length; i++)
+                normals[i] = new Vector3(0, 0, 0);
+
+            for (int i = 0; i < f.Count; i += 3)
+            {
+                STVertex v1 = vertices[(int)f[i]];
+                STVertex v2 = vertices[(int)f[i + 1]];
+                STVertex v3 = vertices[(int)f[i + 2]];
+                Vector3 nrm = CalculateNormal(v1, v2, v3);
+
+                normals[f[i + 0]] += nrm * (nrm.Length / 2);
+                normals[f[i + 1]] += nrm * (nrm.Length / 2);
+                normals[f[i + 2]] += nrm * (nrm.Length / 2);
+            }
+
+            for (int i = 0; i < normals.Length; i++)
+                vertices[i].Normal = normals[i].Normalized();
+        }
+
+        private static Vector3 CalculateNormal(STVertex v1, STVertex v2, STVertex v3)
+        {
+            Vector3 U = v2.Position - v1.Position;
+            Vector3 V = v3.Position - v1.Position;
+
+            // Don't normalize here, so surface area can be calculated. 
+            return Vector3.Cross(U, V);
+        }
+
+        private static List<BoneWeight[]> ParseWeightController(controller controller, ColladaScene scene)
         {
             if (controller == null) return new List<BoneWeight[]>();
 
@@ -363,29 +462,33 @@ namespace Source2Binary.Collada
             string[] skinningCounts = skin.vertex_weights.vcount.Trim(' ').Split(' ');
             string[] indices = skin.vertex_weights.v.Trim(' ').Split(' ');
 
+            int maxSkinning = (int)scene.Settings.MaxSkinningCount;
             int stride = skin.vertex_weights.input.Length;
             int indexOffset = 0;
             for (int v = 0; v < skinningCounts.Length; v++)
             {
                 int numSkinning = Convert.ToInt32(skinningCounts[v]);
 
-                BoneWeight[] boneWeightsArr = new BoneWeight[numSkinning];
+                BoneWeight[] boneWeightsArr = new BoneWeight[Math.Min(maxSkinning, numSkinning)];
                 for (int j = 0; j < numSkinning; j++) {
-                    boneWeightsArr[j] = new BoneWeight();
-                    foreach (var input in skin.vertex_weights.input)
+                    if (j < scene.Settings.MaxSkinningCount)
                     {
-                        int offset = (int)input.offset;
-                        var source = DaeUtility.FindSourceFromInput(input, skin.source);
-                        int index = Convert.ToInt32(indices[indexOffset + offset]);
-                        if (input.semantic == "WEIGHT")
+                        boneWeightsArr[j] = new BoneWeight();
+                        foreach (var input in skin.vertex_weights.input)
                         {
-                            var weights = source.Item as float_array;
-                            boneWeightsArr[j].Weight = (float)weights.Values[index];
-                        }
-                        if (input.semantic == "JOINT")
-                        {
-                            var bones = source.Item as Name_array;
-                            boneWeightsArr[j].Bone = bones.Values[index];
+                            int offset = (int)input.offset;
+                            var source = DaeUtility.FindSourceFromInput(input, skin.source);
+                            int index = Convert.ToInt32(indices[indexOffset + offset]);
+                            if (input.semantic == "WEIGHT")
+                            {
+                                var weights = source.Item as float_array;
+                                boneWeightsArr[j].Weight = (float)weights.Values[index];
+                            }
+                            if (input.semantic == "JOINT")
+                            {
+                                var bones = source.Item as Name_array;
+                                boneWeightsArr[j].Bone = bones.Values[index];
+                            }
                         }
                     }
                     indexOffset += stride;
@@ -400,17 +503,12 @@ namespace Source2Binary.Collada
 
         private static BoneWeight[] RemoveZeroWeights(BoneWeight[] boneWeights)
         {
-            float[] weights = new float[4];
+            float[] weights = new float[8];
 
             int MaxWeight = 255;
-            for (int j = 0; j < 4; j++)
+            for (int j = 0; j < 8; j++)
             {
-                if (boneWeights.Length < j + 1)
-                {
-                    weights[j] = 0;
-                    MaxWeight = 0;
-                }
-                else
+                if (boneWeights.Length > j)
                 {
                     int weight = (int)(boneWeights[j].Weight * 255);
                     if (boneWeights.Length == j + 1)
@@ -425,6 +523,11 @@ namespace Source2Binary.Collada
                         MaxWeight -= weight;
 
                     weights[j] = weight / 255f;
+                }
+                else
+                {
+                    weights[j] = 0;
+                    MaxWeight = 0;
                 }
             }
 

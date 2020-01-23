@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using Collada141;
 using OpenTK;
+using System.Linq;
 
 namespace Source2Binary.Collada
 {
@@ -30,13 +31,19 @@ namespace Source2Binary.Collada
         public static source FindSourceFromInput(InputLocalOffset input, source[] sources)
         {
             string inputSource = input.source.Trim('#');
-            return Array.Find(sources, x => x.id == inputSource);
+            if (sources.Any(x => x.id == inputSource))
+                return Array.Find(sources, x => x.id == inputSource);
+            else
+                return null;
         }
 
         public static source FindSourceFromInput(InputLocal input, source[] sources)
         {
             string inputSource = input.source.Trim('#');
-            return Array.Find(sources, x => x.id == inputSource);
+            if (sources.Any(x => x.id == inputSource))
+                return Array.Find(sources, x => x.id == inputSource);
+            else
+                return null;
         }
 
         public static Matrix4 GetMatrix(object[] items)

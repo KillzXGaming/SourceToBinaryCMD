@@ -26,6 +26,8 @@ namespace Source2Binary.Collada
 
         public class ImportSettings
         {
+            public uint MaxSkinningCount = 4;
+
             public bool FixDuplicateNames { get; set; } = true;
         }
 

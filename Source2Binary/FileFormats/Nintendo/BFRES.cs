@@ -64,7 +64,6 @@ namespace Source2Binary
                 fmdl.Name = model.Name;
                 foreach (var mat in model.Materials)
                 {
-                    Console.WriteLine("mat " + mat.Name);
                     Material fmat = new Material();
                     fmat.Name = mat.Name;
                     fmdl.Materials.Add(fmat);
@@ -74,11 +73,11 @@ namespace Source2Binary
                 fmdl.Skeleton = new Skeleton();
                 foreach (var bone in model.Skeleton.Bones)
                 {
-                    Console.WriteLine("bone " + bone.Name);
-
                     fmdl.Skeleton.BoneDict.Add(bone.Name);
                     fmdl.Skeleton.Bones.Add(new Bone()
                     {
+                        FlagsRotation = BoneFlagsRotation.EulerXYZ,
+                        FlagsTransform = SetBoneFlags(bone),
                         Name = bone.Name,
                         RigidMatrixIndex = -1,  //Gets calculated after
                         SmoothMatrixIndex = -1, //Gets calculated after
@@ -205,6 +204,18 @@ namespace Source2Binary
 
                 resFile.Models.Add(fmdl);
             }
+        }
+
+        private static BoneFlagsTransform SetBoneFlags(STBone bn)
+        {
+            BoneFlagsTransform flags = BoneFlagsTransform.None;
+            if (bn.Position == OpenTK.Vector3.Zero)
+                flags |= BoneFlagsTransform.TranslateZero;
+            if (bn.EulerRotation == OpenTK.Vector3.Zero)
+                flags |= BoneFlagsTransform.RotateZero;
+            if (bn.Scale == OpenTK.Vector3.One)
+                flags |= BoneFlagsTransform.ScaleOne;
+            return flags;
         }
 
         private static uint CalculateSkinCount(List<STVertex> vertices)
@@ -431,7 +442,7 @@ namespace Source2Binary
 
             public AttribFormat PositionFormat = AttribFormat.Format_32_32_32_Single;
             public AttribFormat NormalFormat = AttribFormat.Format_10_10_10_2_SNorm;
-            public AttribFormat TexCoordFormat = AttribFormat.Format_16_16_SInt;
+            public AttribFormat TexCoordFormat = AttribFormat.Format_16_16_Single;
             public AttribFormat ColorFormat = AttribFormat.Format_16_16_16_16_Single;
             public AttribFormat TangentFormat = AttribFormat.Format_8_8_8_8_SNorm;
             public AttribFormat BitangentFormat = AttribFormat.Format_8_8_8_8_SNorm;
