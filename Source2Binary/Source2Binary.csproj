@@ -17,6 +17,7 @@
   <ItemGroup>
     <Folder Include="FileFormats\Nintendo\Pokemon\GFMDL\" />
     <Folder Include="Libraries\" />
+    <Folder Include="Textures\Decoders\GX2\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +31,9 @@
     </Reference>
     <Reference Include="Syroot.Maths">
       <HintPath>Libraries\Syroot.Maths.dll</HintPath>
+    </Reference>
+    <Reference Include="Syroot.NintenTools.Bfres">
+      <HintPath>Libraries\Syroot.NintenTools.Bfres.dll</HintPath>
     </Reference>
     <Reference Include="Syroot.NintenTools.NSW.Bfres">
       <HintPath>Libraries\Syroot.NintenTools.NSW.Bfres.dll</HintPath>

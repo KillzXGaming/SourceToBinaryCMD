@@ -4,6 +4,7 @@ using System.Text;
 using Collada141;
 using OpenTK;
 using System.Linq;
+using System.Diagnostics;
 
 namespace Source2Binary.Collada
 {
@@ -13,7 +14,10 @@ namespace Source2Binary.Collada
         {
             if (settings == null) settings = new DAE.ImportSettings();
 
-             STGenericScene Scene = new STGenericScene();
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+
+            STGenericScene Scene = new STGenericScene();
 
             COLLADA collada = COLLADA.Load(fileName);
             ColladaScene colladaScene = new ColladaScene(collada, settings);
@@ -58,6 +62,9 @@ namespace Source2Binary.Collada
                 }
             }
 
+            sw.Stop();
+            Console.WriteLine("Elapsed={0}", sw.Elapsed);
+
             return Scene;
         }
 
@@ -72,7 +79,7 @@ namespace Source2Binary.Collada
             public library_controllers controllers;
             public library_materials materials;
 
-            public UpAxisType UpAxisType = UpAxisType.Z_UP;
+            public UpAxisType UpAxisType = UpAxisType.Y_UP;
             public assetUnit UintSize;
 
             public ColladaScene(COLLADA collada, DAE.ImportSettings settings)
@@ -171,12 +178,9 @@ namespace Source2Binary.Collada
             STBone bone = new STBone(model.Skeleton, daeNode.name);
             model.Skeleton.Bones.Add(bone);
 
-            var transform = DaeUtility.GetMatrix(daeNode.Items) * parentTransform;
-
-            bone.Scale = transform.ExtractScale();
-            bone.Rotation = transform.ExtractRotation();
-            bone.Position = transform.ExtractTranslation();
+            bone.Transform = DaeUtility.GetMatrix(daeNode.Items) * parentTransform;
             bone.Parent = boneParent;
+            Console.WriteLine("NODE " + bone.Name + " " + bone.Transform);
 
             parentTransform = Matrix4.Identity;
 
@@ -198,49 +202,29 @@ namespace Source2Binary.Collada
             mesh.Name = geom.name;
 
             var boneWeights = ParseWeightController(controller, scene);
-            int numVertex = GetTotalVertexCount(daeMesh.Items);
 
             foreach (var item in daeMesh.Items) {
+                //Poly lists can control specific amounts of indices for primitive types like quads
                 if (item is polylist)
                 {
                     var poly = item as polylist;
                     ConvertPolygon(scene, mesh, daeMesh, poly.input,
-                        boneWeights, materials, poly.material, poly.p);
+                        boneWeights, materials, poly.material, poly.p, (int)poly.count, poly.vcount);
                 }
                 else if (item is triangles)
                 {
                     var triangle = item as triangles;
                     ConvertPolygon(scene, mesh, daeMesh, triangle.input,
-                       boneWeights, materials, triangle.material, triangle.p);
+                       boneWeights, materials, triangle.material, triangle.p, (int)triangle.count);
                 }
             }
 
             return mesh;
         }
 
-        private static int GetTotalVertexCount(object[] items)
-        {
-            int numVertex = 0;
-            foreach (var poly in items)
-            {
-                string[] indices = new string[0];
-                if (poly is polylist)
-                    indices = ((polylist)poly).p.Trim(' ').Split(' ');
-                else if (poly is triangles)
-                    indices = ((triangles)poly).p.Trim(' ').Split(' ');
-
-                for (int i = 0; i < indices.Length; i++)
-                {
-                    int index = Convert.ToInt32(indices[i]);
-                    numVertex = Math.Max(numVertex, index + 1);
-                }
-            }
-            return numVertex;
-        }
-
         private static void ConvertPolygon(ColladaScene scene,STGenericMesh mesh, mesh daeMesh,
             InputLocalOffset[] inputs, List<BoneWeight[]> boneWeights, 
-            library_materials materials, string material, string polys)
+            library_materials materials, string material, string polys, int polyCount, string vcount = "")
         {
             List<uint> faces = new List<uint>();
 
@@ -249,6 +233,10 @@ namespace Source2Binary.Collada
             group.MaterialIndex = DaeUtility.FindMaterialIndex(materials, material);
 
             string[] indices = polys.Trim(' ').Split(' ');
+            string[] vertexCount = new string[0];
+            if (vcount != string.Empty)
+                vertexCount = vcount.Trim(' ').Split(' ');
+
             int stride = 0;
             for (int i = 0; i < inputs.Length; i++)
                 stride = Math.Max(0, (int)inputs[i].offset + 1);
@@ -262,22 +250,30 @@ namespace Source2Binary.Collada
                 vertices.Add(new Vertex(vertices.Count, new List<int>()));
             }
 
-            for (int i = 0; i < indices.Length ; i += stride)
+            var indexStride = (indices.Length / 3) / polyCount;
+            for (int i = 0; i < polyCount ; i++)
             {
-                List<int> semanticIndices = new List<int>();
-                for (int j = 0; j < inputs.Length; j++) {
-                    int index = Convert.ToInt32(indices[i  + (int)inputs[j].offset]);
-                    semanticIndices.Add(index);
+                int count = 3;
+                if (vertexCount.Length > i)
+                    count = Convert.ToInt32(vertexCount[i]);
+
+                for (int v = 0; v < count; v++)
+                {
+                    List<int> semanticIndices = new List<int>();
+                    for (int j = 0; j < inputs.Length; j++)
+                    {
+                        int faceOffset = (indexStride * 3) * i;
+                        int index = Convert.ToInt32(indices[faceOffset + (v * indexStride) + (int)inputs[j].offset]);
+                        semanticIndices.Add(index);
+                    }
+
+                    BoneWeight[] boneWeightData = new BoneWeight[0];
+                    if (boneWeights?.Count > semanticIndices[0])
+                        boneWeightData = boneWeights[semanticIndices[0]];
+
+                    VertexLoader.LoadVertex(ref faces, ref vertices, semanticIndices, boneWeightData);
                 }
-
-                BoneWeight[] boneWeightData = new BoneWeight[0];
-                if (boneWeights?.Count > semanticIndices[0])
-                    boneWeightData = boneWeights[semanticIndices[0]];
-
-                VertexLoader.LoadVertex(ref faces, ref vertices, semanticIndices, boneWeightData);
             }
-
-            group.Faces = faces;
 
             int numTexCoordChannels = 0;
             int numColorChannels = 0;
@@ -346,8 +342,55 @@ namespace Source2Binary.Collada
                 }
             }
 
+            group.Faces = faces;
+
             if (!hasNormals)
                 CalculateNormals(mesh.Vertices, faces);
+            if (scene.Settings.RemoveDuplicateVerts)
+                RemoveDuplicateVerts(mesh.Vertices, faces);
+        }
+
+        private static void RemoveDuplicateVerts(List<STVertex> vertices, List<uint> faces)
+        {
+            List<VertexCheck> vertcies = new List<VertexCheck>();
+            for (int v = 0; v < vertices.Count; v++)
+            {
+
+            }
+        }
+
+        private struct VertexCheck
+        {
+            public Vector3 Position;
+            public Vector3 Normal;
+        }
+
+        private static List<uint> TriangulateQuad(List<STVertex> vertices, List<uint> faces)
+        {
+            var newfaces = new List<uint>();
+            int facecount = faces.Count;
+            for (int i = 0; i < facecount / 4; i += 4)
+            {
+                var A = faces[i+0];
+                var B = faces[i+1];
+                var C = faces[i+2];
+                var D = faces[i+3];
+
+                double dist1 = vertices[(int)A].DistanceTo(vertices[(int)C]);
+                double dist2 = vertices[(int)B].DistanceTo(vertices[(int)D]);
+                if (dist1 > dist2)
+                {
+                    newfaces.AddRange(new uint[] { A, B, D });
+                    newfaces.AddRange(new uint[] { B, C, D });
+                }
+                else
+                {
+                    newfaces.AddRange(new uint[] { A, B, C });
+                    newfaces.AddRange(new uint[] { A, C, D });
+                }
+            }
+
+            return newfaces;
         }
 
         private static void ParseVertexSource(ref STVertex vertex, ColladaScene scene, source source, 
@@ -363,12 +406,24 @@ namespace Source2Binary.Collada
                         (float)array.Values[index + 1],
                         (float)array.Values[index + 2]);
                     vertex.Position = ApplyUintScaling(scene, vertex.Position);
+                    if (scene.UpAxisType == UpAxisType.Z_UP) {
+                        vertex.Position = new Vector3(
+                             vertex.Position.X,
+                             vertex.Position.Z,
+                             -vertex.Position.Y);
+                    }
                     break;
                 case "NORMAL":
                     vertex.Normal = new Vector3(
                         (float)array.Values[index + 0],
                         (float)array.Values[index + 1],
                         (float)array.Values[index + 2]);
+                    if (scene.UpAxisType == UpAxisType.Z_UP) {
+                        vertex.Normal = new Vector3(
+                             vertex.Normal.X,
+                             vertex.Normal.Z,
+                             -vertex.Normal.Y);
+                    }
                     break;
                 case "TEXCOORD":
                     vertex.TexCoords[set] = new Vector2(

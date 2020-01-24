@@ -190,7 +190,12 @@ namespace Source2Binary
 
                     Mesh bMesh = new Mesh();
                     bMesh.PrimitiveType = PrimitiveType.Triangles;
-                    bMesh.SetIndices(mesh.Faces);
+
+                    IndexFormat Format = IndexFormat.UInt16;
+                    if (mesh.Faces.Any(x => x > ushort.MaxValue))
+                        Format = IndexFormat.UInt32;
+
+                    bMesh.SetIndices(mesh.Faces, Format);
                     bMesh.SubMeshes.Add(new SubMesh()
                     {
                         Offset = 0,
@@ -360,7 +365,6 @@ namespace Source2Binary
                     Format = settings.NormalFormat,
                 });
             }
-
 
             if (Tangents.Count > 0) {
                 attributes.Add(new VertexBufferHelperAttrib()

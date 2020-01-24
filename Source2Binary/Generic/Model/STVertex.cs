@@ -14,6 +14,15 @@ namespace Source2Binary
         public Vector4 Bitangent { get; set; }
 
         public List<BoneWeight> BoneWeights = new List<BoneWeight>();
+
+        public float DistanceTo(STVertex vertex)
+        {
+            float deltaX = vertex.Position.X - Position.X;
+            float deltaY = vertex.Position.Y - Position.Y;
+            float deltaZ = vertex.Position.Z - Position.Z;
+
+            return (float)Math.Sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+        }
     }
 
     public class BoneWeight

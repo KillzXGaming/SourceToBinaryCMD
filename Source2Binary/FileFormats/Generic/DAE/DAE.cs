@@ -28,6 +28,8 @@ namespace Source2Binary.Collada
         {
             public uint MaxSkinningCount = 4;
 
+            public bool RemoveDuplicateVerts { get; set; } = true;
+
             public bool FixDuplicateNames { get; set; } = true;
         }
 

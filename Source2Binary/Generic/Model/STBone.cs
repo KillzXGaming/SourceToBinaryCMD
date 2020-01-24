@@ -7,11 +7,28 @@ namespace Source2Binary
 {
     public class STBone
     {
+        public string Name { get; set; }
+
         private STSkeleton Skeleton;
+
+        private Matrix4 transform;
+        public Matrix4 Transform
+        {
+            set
+            {
+                Scale = value.ExtractScale();
+                Rotation = value.ExtractRotation();
+                Position = value.ExtractTranslation();
+                transform = value;
+            }
+            get
+            {
+                return transform;
+            }
+        }
 
         public Vector3 Position { get; set; }
         public Vector3 Scale { get; set; }
-
         public Quaternion Rotation { get; set; }
 
         public Vector3 EulerRotation 
@@ -20,7 +37,6 @@ namespace Source2Binary
             set { Rotation = STMath.FromEulerAngles(value); }
         }
 
-        public string Name { get; set; }
 
         public STBone Parent;
 
