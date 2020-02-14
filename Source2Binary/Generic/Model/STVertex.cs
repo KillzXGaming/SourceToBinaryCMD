@@ -4,6 +4,10 @@ using System.Text;
 using OpenTK;
 namespace Source2Binary
 {
+    /// <summary>
+    /// Represents a single vertex point capable of storing vertex information such as 
+    /// position, normal, texture coordinates, and more.
+    /// </summary>
     public class STVertex
     {
         public Vector3 Position { get; set; }
@@ -25,6 +29,10 @@ namespace Source2Binary
         }
     }
 
+    /// <summary>
+    /// Represents a bone weight used for a vertex
+    /// storing bone and weight rigging information.
+    /// </summary>
     public class BoneWeight
     {
         public string Bone { get; set; }

@@ -4,6 +4,10 @@ using System.Text;
 
 namespace Source2Binary
 {
+    /// <summary>
+    /// Generic formats used across the tool 
+    /// for cross conerting of multiple image formats.
+    /// </summary>
     public enum SBTexFormat
     {
         RGBA8_Srgb,

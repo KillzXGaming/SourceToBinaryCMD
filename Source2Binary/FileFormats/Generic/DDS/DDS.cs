@@ -105,7 +105,7 @@ namespace Source2Binary.Dds
         public class Header
         {
             public Magic Magic = "DDS ";
-            public uint Size;
+            public uint Size = 0x7C;
             public uint Flags;
             public uint Height;
             public uint Width;
@@ -120,7 +120,7 @@ namespace Source2Binary.Dds
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class DDSPFHeader
         {
-            public uint Size;
+            public uint Size = 0x20;
             public uint Flags;
             public uint FourCC;
             public uint RgbBitCount;
@@ -164,6 +164,20 @@ namespace Source2Binary.Dds
                 else
                     PfHeader.Caps2 = 0;
             }
+        }
+
+        public DDS()
+        {
+            MainHeader = new Header();
+            PfHeader = new DDSPFHeader();
+            Dx10Header = new DX10Header();
+        }
+
+        public DDS(uint width, uint height, uint depth, SBTexFormat format, List<byte[]> imageData) : base()
+        {
+            MainHeader.Width = width;
+            MainHeader.Height = height;
+            MainHeader.Depth = depth;
         }
 
         public DDS(string fileName) { Load(fileName); }

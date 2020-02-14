@@ -22,7 +22,7 @@ namespace Source2Binary.IO
 
             fixed (byte* pBuffer = buffer)
                 return Marshal.PtrToStructure<T>((IntPtr)pBuffer + offset);
-        }
+        }   
 
         // Write
         public static unsafe byte[] StructToBytes<T>(this T item, bool isBigEndian)

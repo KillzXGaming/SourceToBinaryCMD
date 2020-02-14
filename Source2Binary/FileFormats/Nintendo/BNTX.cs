@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.IO;
 using Syroot.NintenTools.NSW.Bntx;
 using Syroot.NintenTools.NSW.Bntx.GFX;
 using System.Linq;
@@ -10,12 +10,48 @@ namespace Source2Binary
 {
     public class BNTX : IConvertableBinary
     {
-        public void GenerateBinary(System.IO.Stream stream, string[] args)
-        {
-            List<DDS> Textures = new List<DDS>();
-            for (int i = 0; i < args.Length; i++)
-                Textures.Add(new DDS(args[i]));
+        public string CommandActivate => "-bntx";
 
+        public void GenerateBinary(FileSettings settings, string[] args)
+        {
+            if (args.Contains("--split"))
+            {
+                foreach (var file in settings.inputFiles) {
+                    var tex = CreateTexture(file);
+                    if (tex == null)
+                        continue;
+
+                    string path = Path.Combine(settings.outputDir, tex.Name + settings.OutputExtension);
+                    CreateBNTX(path, new List<Texture>() { tex });
+                }
+            }
+            else
+            {
+                List<Texture> textures = new List<Texture>();
+                foreach (var file in settings.inputFiles) {
+                    var tex = CreateTexture(file);
+                    if (tex == null)
+                        continue;
+                    textures.Add(tex);
+                }
+
+                CreateBNTX(settings.outputFiles[0], textures);
+            }
+        }
+
+        private Texture CreateTexture(string path) {
+            string ext = System.IO.Path.GetExtension(path);
+            switch (ext)
+            {
+                case ".dds":
+                case ".dds2":
+                    return FromDDS(new DDS(path));
+            }
+            return null;
+        }
+
+        private void CreateBNTX(string path, List<Texture> textures)
+        {
             BntxFile bntx = new BntxFile();
             bntx.Target = new char[] { 'N', 'X', ' ', ' ' };
             bntx.Name = "textures";
@@ -30,10 +66,10 @@ namespace Source2Binary
             bntx.RelocationTable = new RelocationTable();
             bntx.Flag = 0;
 
-            foreach (var file in Textures)
-                bntx.Textures.Add(FromDDS(file));
+            foreach (var file in textures)
+                bntx.Textures.Add(file);
 
-            bntx.Save(stream);
+            bntx.Save(path);
         }
 
         private Texture FromDDS(DDS dds)
@@ -44,7 +80,6 @@ namespace Source2Binary
             config.Format = FormatConverter[dds.ToGenericFormat()];
             config.MipCount = dds.MainHeader.MipCount;
             config.Name = System.IO.Path.GetFileNameWithoutExtension(dds.FileName);
-
             Console.WriteLine("SurfaceFormat " + config.Format);
 
             return FromBitMap(dds.GetImageData(), config);
@@ -101,6 +136,9 @@ namespace Source2Binary
 
         public Texture FromBitMap(List<byte[]> arrayFaces, TextureConfig config)
         {
+            if (config.MipCount == 0)
+                config.MipCount = 1;
+
             Texture tex = new Texture();
             tex.Name = config.Name;
             tex.Format = config.Format;
@@ -127,7 +165,6 @@ namespace Source2Binary
             tex.Pitch = config.Pitch;
             tex.MipOffsets = new long[tex.MipCount];
             tex.TextureData = new List<List<byte[]>>();
-
             for (int i = 0; i < arrayFaces.Count; i++)
             {
                 List<byte[]> mipmaps = SwizzleSurfaceMipMaps(tex, arrayFaces[i], tex.MipCount);
@@ -198,9 +235,6 @@ namespace Source2Binary
                 SurfaceSize += (uint)AlignedData.Length;
 
                 //  Console.WriteLine("SurfaceSize Aligned " + AlignedData);
-
-                Console.WriteLine("MipOffsets " + SurfaceSize);
-                Console.WriteLine("size " + size);
 
                 tex.MipOffsets[mipLevel] = SurfaceSize;
                 if (tex.TileMode == TileMode.LinearAligned)

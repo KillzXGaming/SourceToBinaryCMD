@@ -2,11 +2,19 @@
 using System.Collections.Generic;
 using System.Text;
 using OpenTK;
+using System.Linq;
 
 namespace Source2Binary
 {
+    /// <summary>
+    /// Represents a generic mesh used for rendering, exporting and editing geoemetry.
+    /// These can optionally be attatched to a <see cref="STGenericModel"/>.
+    /// </summary>
     public class STGenericMesh
     {
+        /// <summary>
+        /// Gets or sets the name of the mesh.
+        /// </summary>
         public string Name { get; set; }
 
         /// <summary>
@@ -23,15 +31,32 @@ namespace Source2Binary
             }
         }
 
+        /// <summary>
+        /// A list of polygon groups which store the faces and material indices of a mesh.
+        /// </summary>
         public List<STPolygonGroup> PolygonGroups = new List<STPolygonGroup>();
+
+        /// <summary>
+        /// A list of <see cref="STVertex"/> which determine the 
+        /// points of a mesh is rendered and displayed
+        /// </summary>
         public List<STVertex> Vertices = new List<STVertex>();
 
         #region methods
 
+        /// <summary>
+        /// Calculates the tangents and bitangents 
+        /// for <see cref="Vertices"/> from texture coordinates.
+        /// </summary>
+        /// <param name="uvSet"></param>
         public void CalculateTangentBitangent(int uvSet)
         {
             if (Vertices.Count < 3)
                 return;
+
+            if (Vertices.Any(x => x.TexCoords?.Length <= uvSet)) {
+                throw new Exception($"Invalid UV set {uvSet} given for calculating tangents.");
+            }
 
             Vector3[] tanArray = new Vector3[Vertices.Count];
             Vector3[] bitanArray = new Vector3[Vertices.Count];

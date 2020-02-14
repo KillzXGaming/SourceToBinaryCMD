@@ -12,7 +12,9 @@ namespace Source2Binary
 {
     public class BFRES : IConvertableBinary
     {
-        public void GenerateBinary(System.IO.Stream stream, string[] args)
+        public string CommandActivate => "-bfresNX";
+
+        public void GenerateBinary(FileSettings settings, string[] args)
         {
             ResFile resFile = new ResFile();
             string output = "";

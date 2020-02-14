@@ -8,8 +8,15 @@ using System.Drawing;
 
 namespace Source2Binary
 {
-    public class BFRESU
+    public class BFRESU : IConvertableBinary
     {
+        public string CommandActivate => "-bfresU";
+
+        public void GenerateBinary(FileSettings settings, string[] args)
+        {
+
+        }
+
         public static void BatchCreateTextures(string filePath)
         {
             Console.WriteLine("filePath " + filePath);
@@ -21,10 +28,10 @@ namespace Source2Binary
             BitmapExtension.ConvertBgraToRgba(data);
 
             string name = Path.GetFileNameWithoutExtension(filePath);
-            resFile.Name = Path.GetFileName(filePath);
-            var tex = AddTexture(name, data, image.Width, image.Height, GX2SurfaceFormat.TCS_R8_G8_B8_A8_SRGB);
+            resFile.Name = $"{name}.sbitemico";
+            var tex = AddTexture(name, data, image.Width, image.Height, 1, GX2SurfaceFormat.TCS_R8_G8_B8_A8_SRGB);
             resFile.Textures.Add(tex.Name, tex);
-            resFile.Name = name;
+            resFile.Alignment = 2048;
             resFile.VersionMajor = 4;
             resFile.VersionMajor2 = 5;
             resFile.VersionMinor = 0;
@@ -39,22 +46,46 @@ namespace Source2Binary
             File.WriteAllBytes($"output/{name}.sbitemico", comp);
         }
 
-        public static Texture AddTexture(string name, byte[] image, int width, int height, GX2SurfaceFormat format)
-        {
-            //Swizzle and create surface
-            var surface = GX2.CreateGx2Texture(image, name,
-                (uint)GX2TileMode.Mode2dTiledThin1,
-                (uint)GX2AAMode.Mode1X,
-                (uint)width,
-                (uint)height,
-                (uint)1,
-                (uint)format,
-                (uint)0,
-                (uint)GX2SurfaceDim.Dim2D,
-                (uint)1
-                );
+        public static Texture AddTexture(string name, byte[] image, int width, int height, int mipCount, GX2SurfaceFormat format) {
+            return AddTexture(name, new List<byte[]>() { image }, width, height, mipCount, format);
+        }
 
-            return FromGx2Surface(surface, name);
+        public static Texture AddTexture(string name, List<byte[]> images, int width, int height, int mipCount, GX2SurfaceFormat format)
+        {
+            Texture tex = null;
+
+            //Go through each texture as an array or depth surface
+            List<byte[]> imageData = new List<byte[]>();
+            List<byte[]> mipData = new List<byte[]>();
+            for (int i = 0; i < images.Count; i++)
+            {
+                //Swizzle and create surface
+                var surface = GX2.CreateGx2Texture(images[i], name,
+                    (uint)GX2TileMode.Mode2dTiledThin1,
+                    (uint)GX2AAMode.Mode1X,
+                    (uint)width,
+                    (uint)height,
+                    (uint)1,
+                    (uint)format,
+                    (uint)0,
+                    (uint)GX2SurfaceDim.Dim2D,
+                    (uint)mipCount
+                    );
+
+                //Apply first surface
+                if (i == 0)
+                    tex = FromGx2Surface(surface, name);
+
+                imageData.Add(surface.data);
+                mipData.Add(surface.mipData);
+            }
+
+            tex.Data = Utils.CombineByteArray(imageData.ToArray());
+            tex.MipData = Utils.CombineByteArray(mipData.ToArray());
+            tex.ArrayLength = (uint)images.Count;
+            imageData.Clear();
+            mipData.Clear();
+            return tex;
         }
 
         public static Texture FromGx2Surface(GX2.GX2Surface surf, string Name)

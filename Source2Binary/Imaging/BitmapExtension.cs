@@ -8,6 +8,11 @@ namespace Source2Binary
 {
     public static class BitmapExtension
     {
+        /// <summary>
+        /// Converts a bitmap's image data into a byte array.
+        /// </summary>
+        /// <param name="bitmap"></param>
+        /// <returns></returns>
         public static byte[] ImageToByte(Bitmap bitmap)
         {
             BitmapData bmpdata = null;
@@ -30,6 +35,11 @@ namespace Source2Binary
             }
         }
 
+        /// <summary>
+        /// Swaps the blue and red channels from a byte array of image data
+        /// The image given must have 4 bytes used per pixel.
+        /// </summary>
+        /// <param name="bytes"></param>
         public static void ConvertBgraToRgba(byte[] bytes)
         {
             for (int i = 0; i < bytes.Length; i += 4)
