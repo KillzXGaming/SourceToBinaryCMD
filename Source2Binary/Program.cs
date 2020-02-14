@@ -48,10 +48,6 @@ namespace Source2Binary
     {
         static void Main(string[] args)
         {
-            foreach (var arg in args)
-             BFRESU.BatchCreateTextures(arg);
-            return;
-
             FileSettings settings = new FileSettings();
             for (int i = 0; i < args.Length; i++)
             {
